@@ -1,0 +1,72 @@
+# US Legal Suffix Normalization Rules
+# Pattern (regex) -> Normalized form
+# Applied after company-name-match library
+
+suffixes:
+  # LLC variants
+  - pattern: r'\bllc\.?\b'
+    replacement: 'LLC'
+  - pattern: r'\bl\.l\.c\.?\b'
+    replacement: 'LLC'
+  - pattern: r'\blc\.?\b'
+    replacement: 'LLC'
+
+  # Corporation variants
+  - pattern: r'\binc\.?\b'
+    replacement: 'Inc'
+  - pattern: r'\bincorporated\b'
+    replacement: 'Inc'
+  - pattern: r'\bcorp\.?\b'
+    replacement: 'Corp'
+  - pattern: r'\bcorporation\b'
+    replacement: 'Corp'
+
+  # Limited variants
+  - pattern: r'\bltd\.?\b'
+    replacement: 'Ltd'
+  - pattern: r'\blimited\b'
+    replacement: 'Ltd'
+
+  # Partnership variants
+  - pattern: r'\blp\.?\b'
+    replacement: 'LP'
+  - pattern: r'\bl\.l\.p\.?\b'
+    replacement: 'LLP'
+  - pattern: r'\bllp\b'
+    replacement: 'LLP'
+  - pattern: r'\bpllc\b'
+    replacement: 'PLLC'
+  - pattern: r'\bp\.l\.l\.c\.?\b'
+    replacement: 'PLLC'
+
+  # Professional
+  - pattern: r'\bpc\.?\b'
+    replacement: 'PC'
+  - pattern: r'\bp\.c\.?\b'
+    replacement: 'PC'
+  - pattern: r'\bpa\.?\b'
+    replacement: 'PA'
+
+  # Company
+  - pattern: r'\bco\.?\b'
+    replacement: 'Co'
+  - pattern: r'\bcompany\b'
+    replacement: 'Co'
+
+  # Group/Associates
+  - pattern: r'\bgroup\b'
+    replacement: 'Group'
+  - pattern: r'\bassociates\b'
+    replacement: 'Associates'
+  - pattern: r'\bpartners\b'
+    replacement: 'Partners'
+  - pattern: r'\bholdings\b'
+    replacement: 'Holdings'
+
+  # Other
+  - pattern: r'\btrust\b'
+    replacement: 'Trust'
+  - pattern: r'\bfoundation\b'
+    replacement: 'Foundation'
+  - pattern: r'\bsociety\b'
+    replacement: 'Society'

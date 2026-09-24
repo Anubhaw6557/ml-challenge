@@ -1,0 +1,63 @@
+paths:
+  raw_dir: "data/raw"
+  processed_dir: "data/processed"
+  candidates_dir: "data/candidates"
+  models_dir: "models"
+  output_dir: "output"
+
+preprocessing:
+  countries: ["US", "India", "France"]
+  # Suffix maps loaded from config/suffixes_*.yaml
+
+blocking:
+  # Name-based keys
+  name_ngram_size: 3
+  name_min_overlap: 2
+  metaphone_enabled: true
+  # Address-based keys (libpostal-parsed)
+  postal_exact: true
+  city_state_exact: true
+  house_number_exact: true
+  # Approximate blocking
+  minhash_enabled: true
+  minhash_threshold: 0.7
+  minhash_perm: 128
+  # Candidate cap
+  max_candidates_per_s1: 200
+  target_recall: 0.95
+
+matching:
+  # Bi-encoder
+  biencoder_model: "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+  biencoder_batch_size: 512
+  biencoder_top_k: 50
+  biencoder_finetune_epochs: 3
+  # Cross-encoder
+  crossencoder_model: "xlm-roberta-base"
+  crossencoder_max_length: 256
+  crossencoder_batch_size: 64
+  # LightGBM
+  lgbm_params:
+    objective: "binary"
+    metric: "binary_logloss"
+    learning_rate: 0.05
+    num_leaves: 63
+    max_depth: 8
+    min_child_samples: 50
+    subsample: 0.8
+    colsample_bytree: 0.8
+    n_estimators: 500
+    early_stopping_rounds: 50
+    verbose: -1
+  # Threshold calibration
+  f05_beta: 0.5
+  thresholds_per_country: true
+
+data:
+  train_val_split: 0.85
+  stratify_by: ["country", "match_count"]
+  random_seed: 42
+
+validation:
+  validate_output: true
+  test_dir: "data/raw/test"

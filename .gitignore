@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+.env
+
+# Virtual environments
+erpipeline/.venv/
+
+# macOS
+.DS_Store
+__MACOSX/
+
+# Large files
+*.zip
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+Thumbs.db
+
+# Logs
+*.log
+
+# Data files (optional - uncomment if you don't want to track data)
+# data/
+# *.csv
+# *.parquet
+
+# Large dataset files
+student_resource/dataset/
+*.tsv

@@ -1,0 +1,54 @@
+# India Legal Suffix Normalization Rules
+
+suffixes:
+  # Private Limited variants (most common)
+  - pattern: r'\bpvt\.?\s*ltd\.?\b'
+    replacement: 'Pvt Ltd'
+  - pattern: r'\bprivate\s+limited\b'
+    replacement: 'Pvt Ltd'
+  - pattern: r'\bpvt\s+ltd\b'
+    replacement: 'Pvt Ltd'
+  - pattern: r'\bprivate\s+ltd\b'
+    replacement: 'Pvt Ltd'
+
+  # Limited variants
+  - pattern: r'\blimited\b'
+    replacement: 'Limited'
+  - pattern: r'\bltd\.?\b'
+    replacement: 'Ltd'
+
+  # LLP variants
+  - pattern: r'\bllp\b'
+    replacement: 'LLP'
+  - pattern: r'\bl\.l\.p\.?\b'
+    replacement: 'LLP'
+
+  # Private Company
+  - pattern: r'\bprivate\s+company\b'
+    replacement: 'Pvt Ltd'
+  - pattern: r'\bpvt\s+company\b'
+    replacement: 'Pvt Ltd'
+
+  # Public Limited
+  - pattern: r'\bpublic\s+limited\b'
+    replacement: 'Public Ltd'
+  - pattern: r'\bpub\s+ltd\b'
+    replacement: 'Public Ltd'
+
+  # Other
+  - pattern: r'\btrust\b'
+    replacement: 'Trust'
+  - pattern: r'\bfoundation\b'
+    replacement: 'Foundation'
+  - pattern: r'\bsociety\b'
+    replacement: 'Society'
+  - pattern: r'\bco-operative\b'
+    replacement: 'Co-operative'
+  - pattern: r'\bcooperative\b'
+    replacement: 'Co-operative'
+
+  # Government/PSU
+  - pattern: r'\bgovt\.?\b'
+    replacement: 'Govt'
+  - pattern: r'\bgovernment\b'
+    replacement: 'Govt'

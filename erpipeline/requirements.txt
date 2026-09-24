@@ -1,0 +1,43 @@
+# Core data processing
+polars==1.16.0
+numpy>=2.0.0
+
+# Address parsing (requires system libpostal)
+pycountry==24.6.1
+
+# Transliteration (use 2.x, NOT 0.9.5)
+aksharamukha>=2.0.0
+
+# Unicode/accent normalization
+unidecode==1.3.8
+
+# String similarity
+rapidfuzz==3.9.0
+
+# Phonetic encoding (use 0.11.x – last pure Python release)
+jellyfish==0.11.2
+
+# Company name cleaning
+company-name-match==0.1.0
+
+# ML/Embeddings
+scikit-learn==1.4.2
+lightgbm==4.3.0
+sentence-transformers==3.0.1
+torch==2.3.0
+faiss-cpu==1.8.0
+
+# Approximate blocking
+datasketch==1.6.4
+
+# Probabilistic linkage
+splink==4.7.0
+
+# Config & utilities
+pyyaml==6.0.1
+tqdm==4.66.4
+rich==13.7.1
+
+# Optional: city extraction
+geotext==0.4.0
+
