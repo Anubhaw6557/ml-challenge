@@ -1,8 +1,11 @@
 # Core data processing
 polars==1.16.0
-numpy>=2.0.0
+numpy<2
 
-# Address parsing (requires system libpostal)
+# Address parsing (multiarch wheels - no system libpostal needed)
+pypostal-multiarch==1.0.3
+
+# Country/admin codes
 pycountry==24.6.1
 
 # Transliteration (use 2.x, NOT 0.9.5)
@@ -14,11 +17,11 @@ unidecode==1.3.8
 # String similarity
 rapidfuzz==3.9.0
 
-# Phonetic encoding (use 0.11.x – last pure Python release)
+# Phonetic encoding (pure Python, avoids Rust)
 jellyfish==0.11.2
 
 # Company name cleaning
-company-name-match==0.1.0
+cleanco==2.3
 
 # ML/Embeddings
 scikit-learn==1.4.2
@@ -30,8 +33,8 @@ faiss-cpu==1.8.0
 # Approximate blocking
 datasketch==1.6.4
 
-# Probabilistic linkage
-splink==4.7.0
+# Probabilistic linkage (use version compatible with Python 3.12)
+splink==4.0.17
 
 # Config & utilities
 pyyaml==6.0.1
@@ -40,4 +43,3 @@ rich==13.7.1
 
 # Optional: city extraction
 geotext==0.4.0
-

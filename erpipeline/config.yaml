@@ -1,5 +1,5 @@
 paths:
-  raw_dir: "data/raw"
+  raw_dir: "/home/spyd3r/opencode/student_resource/dataset"
   processed_dir: "data/processed"
   candidates_dir: "data/candidates"
   models_dir: "models"
@@ -7,22 +7,19 @@ paths:
 
 preprocessing:
   countries: ["US", "India", "France"]
-  # Suffix maps loaded from config/suffixes_*.yaml
 
 blocking:
-  # Name-based keys
   name_ngram_size: 3
   name_min_overlap: 2
   metaphone_enabled: true
-  # Address-based keys (libpostal-parsed)
   postal_exact: true
   city_state_exact: true
   house_number_exact: true
-  # Approximate blocking
   minhash_enabled: true
   minhash_threshold: 0.7
   minhash_perm: 128
-  # Candidate cap
+  biencoder_enabled: true
+  biencoder_top_k: 100
   max_candidates_per_s1: 200
   target_recall: 0.95
 
@@ -60,4 +57,4 @@ data:
 
 validation:
   validate_output: true
-  test_dir: "data/raw/test"
+  test_dir: "/home/spyd3r/opencode/student_resource/dataset/test"

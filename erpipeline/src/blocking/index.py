@@ -12,6 +12,7 @@ import numpy as np
 import polars as pl
 from datasketch import MinHash, MinHashLSH
 import faiss
+from tqdm import tqdm
 
 from ..config import get_config
 
@@ -305,12 +306,36 @@ class BlockingIndex:
         return obj
 
 
+def _format_entity_info(entity_data: Dict, label: str) -> str:
+    """Format entity info for detailed output"""
+    lines = [f"  {label}:"]
+    lines.append(f"    ID: {entity_data.get('entity_id', 'N/A')}")
+    lines.append(f"    Country: {entity_data.get('country', 'N/A')}")
+    lines.append(f"    Raw Name: {entity_data.get('name_raw', 'N/A')}")
+    lines.append(f"    Clean Name: {entity_data.get('name_clean', 'N/A')}")
+    lines.append(f"    Raw Addr: {entity_data.get('addr_raw', 'N/A')}")
+    lines.append(f"    Clean Addr: {entity_data.get('addr_clean', 'N/A')}")
+    lines.append(f"    PINs: {entity_data.get('postal_codes', [])}")
+    lines.append(f"    City: {entity_data.get('city', 'N/A')}")
+    lines.append(f"    State: {entity_data.get('state', 'N/A')}")
+    lines.append(f"    District: {entity_data.get('district', 'N/A')}")
+    lines.append(f"    House#: {entity_data.get('house_number', 'N/A')}")
+    lines.append(f"    Road: {entity_data.get('road', 'N/A')}")
+    lines.append(f"    Unit: {entity_data.get('unit', 'N/A')}")
+    lines.append(f"    PO Box: {entity_data.get('po_box', 'N/A')}")
+    lines.append(f"    Metaphone: {entity_data.get('metaphone', 'N/A')}")
+    lines.append(f"    Soundex: {entity_data.get('soundex', 'N/A')}")
+    lines.append(f"    NYSIIS: {entity_data.get('nysiis', 'N/A')}")
+    lines.append(f"    N-grams: {entity_data.get('name_ngrams', [])[:10]}...")
+    return "\n".join(lines)
+
+
 def evaluate_blocking_recall(index: BlockingIndex, 
                              s1_df: pl.DataFrame,
                              gt_path: str,
                              s23_entity_data: Dict) -> Dict[str, float]:
-    """Evaluate blocking recall on ground truth"""
-    import json
+    """Evaluate blocking recall on ground truth with detailed per-entity output"""
+    print(f"  Loading ground truth from: {gt_path}")
     
     # Load ground truth
     gt_pairs = set()
@@ -323,17 +348,24 @@ def evaluate_blocking_recall(index: BlockingIndex,
                 for match_id in parts[1].split(','):
                     gt_pairs.add((s1_id, match_id))
     
+    print(f"  Loaded {len(gt_pairs)} ground truth pairs")
+    
     # Evaluate per S1 entity
     total_gt = 0
     recalled_gt = 0
     per_entity_recall = []
+    candidate_counts = []
     
-    for row in s1_df.iter_rows(named=True):
+    print(f"  Evaluating {len(s1_df)} S1 entities...")
+    for idx, row in enumerate(s1_df.iter_rows(named=True)):
         s1_id = row['entity_id']
         
         # Get ground truth matches for this S1
         s1_gt = {m for s1, m in gt_pairs if s1 == s1_id}
         if not s1_gt:
+            print(f"\n{'='*80}")
+            print(f"[{idx+1:3d}] {s1_id}: NO GROUND TRUTH (singleton)")
+            print(_format_entity_info(row, "S1 Entity (NO GT)"))
             continue
         
         # Get candidates
@@ -344,17 +376,63 @@ def evaluate_blocking_recall(index: BlockingIndex,
         total_gt += len(s1_gt)
         recalled_gt += recalled
         
-        per_entity_recall.append(recalled / len(s1_gt) if s1_gt else 1.0)
+        entity_recall = recalled / len(s1_gt) if s1_gt else 1.0
+        per_entity_recall.append(entity_recall)
+        candidate_counts.append(len(candidates))
+        
+        missed = s1_gt - candidates
+        matched = s1_gt & candidates
+        
+        # Detailed output for EVERY entity
+        print(f"\n{'='*80}")
+        print(f"[{idx+1:3d}] {s1_id}: GT={len(s1_gt)} Candidates={len(candidates)} Recall={entity_recall:.2f}")
+        
+        # Print S1 entity details
+        print(_format_entity_info(row, "S1 Entity"))
+        
+        # Print matched candidates with details
+        if matched:
+            print(f"  Matched ({len(matched)}):")
+            for mid in sorted(matched):
+                if mid in s23_entity_data:
+                    print(_format_entity_info(s23_entity_data[mid], f"  ✓ MATCH: {mid}"))
+                else:
+                    print(f"    ✓ MATCH: {mid} (data not in index)")
+        
+        # Print missed candidates with details
+        if missed:
+            print(f"  Missed ({len(missed)}):")
+            for mid in sorted(missed):
+                if mid in s23_entity_data:
+                    print(_format_entity_info(s23_entity_data[mid], f"  ✗ MISSED: {mid}"))
+                else:
+                    print(f"    ✗ MISSED: {mid} (data not in index)")
+        
+        # Print candidate list
+        if candidates:
+            print(f"  All Candidates ({len(candidates)}): {sorted(candidates)}")
+        
+        # Break early for testing (remove this for full eval)
+        if idx >= 49:  # Test first 50 entities
+            print(f"\n  [TEST MODE] Stopping after 50 entities")
+            break
     
     overall_recall = recalled_gt / total_gt if total_gt > 0 else 0.0
     macro_recall = np.mean(per_entity_recall) if per_entity_recall else 0.0
+    avg_candidates = np.mean(candidate_counts) if candidate_counts else 0
+    
+    print(f"\n{'='*80}")
+    print(f"  SUMMARY: Total GT pairs: {total_gt}, Recalled: {recalled_gt}")
+    print(f"  Overall recall: {overall_recall:.4f}")
+    print(f"  Macro recall: {macro_recall:.4f}")
+    print(f"  Avg candidates per S1: {avg_candidates:.1f}")
     
     return {
         'overall_recall': overall_recall,
         'macro_recall': macro_recall,
         'total_gt_pairs': total_gt,
         'recalled_pairs': recalled_gt,
-        'avg_candidates_per_s1': np.mean([r['num_candidates'] for r in results]) if results else 0,
+        'avg_candidates_per_s1': avg_candidates,
     }
 
 

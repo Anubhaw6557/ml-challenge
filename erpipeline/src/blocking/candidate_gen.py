@@ -74,13 +74,16 @@ def evaluate_recall(config: Dict = None, split: str = 'train') -> Dict:
     
     # Load processed data
     processed_dir = Path(config['paths']['processed_dir']) / split
+    print(f"Loading processed data from: {processed_dir}")
     s1_df = pl.read_parquet(processed_dir / 'source1.parquet')
     s2_df = pl.read_parquet(processed_dir / 'source2.parquet')
     s3_df = pl.read_parquet(processed_dir / 'source3.parquet')
     s23_df = pl.concat([s2_df, s3_df])
+    print(f"Loaded {len(s1_df)} S1, {len(s2_df)} S2, {len(s3_df)} S3")
     
     # Load ground truth
     gt_path = Path(config['paths']['raw_dir']) / split / f'{split}_ground_truth.tsv'
+    print(f"Loading ground truth from: {gt_path}")
     
     # Build blocking index
     bc = BlockingConfig(
@@ -97,12 +100,15 @@ def evaluate_recall(config: Dict = None, split: str = 'train') -> Dict:
         max_candidates_per_s1=config['blocking']['max_candidates_per_s1'],
     )
     
+    print("Building blocking index...")
     index = BlockingIndex(bc)
     index.build_from_dataframe(s23_df)
+    print("Blocking index built")
     
     # Evaluate
-    metrics = evaluate_blocking_recall(index, s1_df, str(gt_path), 
-                                       {r['entity_id']: r for r in s23_df.iter_rows(named=True)})
+    print("Evaluating recall...")
+    s23_entity_data = {r['entity_id']: r for r in s23_df.iter_rows(named=True)}
+    metrics = evaluate_blocking_recall(index, s1_df, str(gt_path), s23_entity_data)
     
     print("\n=== Blocking Recall Evaluation ===")
     for k, v in metrics.items():

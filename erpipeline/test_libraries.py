@@ -56,10 +56,10 @@ def test_imports():
         print(f"  ❌ jellyfish: {e}")
     
     try:
-        from company_name_match import clean_company_name
-        print(f"  ✅ company-name-match")
+        from cleanco import basename
+        print(f"  ✅ cleanco")
     except Exception as e:
-        print(f"  ❌ company-name-match: {e}")
+        print(f"  ❌ cleanco: {e}")
     
     try:
         import lightgbm as lgb
@@ -112,10 +112,10 @@ def test_basic_functionality():
     meta = jellyfish.metaphone("Smith")
     print(f"  jellyfish metaphone: 'Smith' → '{meta}'")
     
-    # Test company-name-match
-    from company_name_match import clean_company_name
-    cleaned = clean_company_name("Apple Inc.")
-    print(f"  company-name-match: 'Apple Inc.' → '{cleaned}'")
+    # Test cleanco
+    from cleanco import basename
+    cleaned = basename("Apple Inc.")
+    print(f"  cleanco basename: 'Apple Inc.' → '{cleaned}'")
     
     # Test aksharamukha
     from aksharamukha import transliterate
