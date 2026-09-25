@@ -64,6 +64,10 @@ class ProcessedRecord:
     metaphone: str
     soundex: str
     nysiis: str
+    addr_ngrams: List[str]
+    addr_metaphone: str
+    addr_soundex: str
+    addr_nysiis: str
 
 
 def _safe_str(text: Any) -> str:
@@ -138,68 +142,101 @@ class PreprocessingPipeline:
         """Normalize French accents to ASCII"""
         return unidecode(text)
     
+    # Mapping from Unicode script names (unicodedata) to aksharamukha
+    # script names. Covers all major Indian scripts, not just Hindi/Tamil.
+    INDIC_SCRIPT_MAP = {
+        'DEVANAGARI': 'Devanagari',   # Hindi, Marathi, Sanskrit, Nepali
+        'BENGALI': 'Bengali',         # Bengali, Assamese
+        'GURMUKHI': 'Gurmukhi',       # Punjabi
+        'GUJARATI': 'Gujarati',       # Gujarati
+        'ORIYA': 'Oriya',             # Odia
+        'TAMIL': 'Tamil',             # Tamil
+        'TELUGU': 'Telugu',           # Telugu
+        'KANNADA': 'Kannada',         # Kannada
+        'MALAYALAM': 'Malayalam',     # Malayalam
+        'SINHALA': 'Sinhala',         # Sinhala
+        'TIBETAN': 'Tibetan',         # Ladakhi, Sikkimese
+    }
+
     def _detect_script(self, text: str) -> str:
-        """Detect primary script: Devanagari, Tamil, Latin"""
+        """Detect the primary non-Latin script in text.
+
+        Returns an aksharamukha script name, or 'Latin' if no Indic
+        script is found.
+        """
         scripts = set()
         for c in text:
             try:
                 name = unicodedata.name(c)
-                if 'DEVANAGARI' in name:
-                    scripts.add('Devanagari')
-                elif 'TAMIL' in name:
-                    scripts.add('Tamil')
-                elif 'LATIN' in name:
-                    scripts.add('Latin')
             except ValueError:
-                pass
-        if 'Devanagari' in scripts:
-            return 'Devanagari'
-        if 'Tamil' in scripts:
-            return 'Tamil'
+                continue
+            for script_key in self.INDIC_SCRIPT_MAP:
+                if script_key in name:
+                    scripts.add(script_key)
+                    break
+        # Prefer any Indic script over Latin.
+        for script_key in self.INDIC_SCRIPT_MAP:
+            if script_key in scripts:
+                return self.INDIC_SCRIPT_MAP[script_key]
         return 'Latin'
-    
+
     def _transliterate_indic(self, text: str) -> str:
-        """Auto-detect and transliterate Indic scripts to ISO Latin"""
+        """Transliterate any Indic script to plain ASCII Latin.
+
+        Must run BEFORE accent stripping: NFD-based accent removal would
+        destroy Indic vowel signs (matras). ISO output is further normalized
+        with unidecode so downstream char n-grams and phonetic encoders see
+        a single ASCII alphabet.
+        """
         script = self._detect_script(text)
-        if script == 'Devanagari':
-            return transliterate.process('Devanagari', 'ISO', text)
-        elif script == 'Tamil':
-            return transliterate.process('Tamil', 'ISO', text)
-        return text
+        if script == 'Latin':
+            return text
+        try:
+            text = transliterate.process(script, 'ISO', text)
+        except Exception:
+            return text
+        return unidecode(text)
     
     def _normalize_name(self, name: str, country: str) -> str:
-        """Normalize business name using libraries"""
+        """Normalize business name using libraries.
+
+        Order: transliterate first, then normalize. NFD-based accent
+        stripping would destroy Indic vowel signs, so any Indic script must
+        be converted to Latin before accent handling.
+        """
         name = self._safe_str(name)
         name = unicodedata.normalize('NFKC', name)
-        
+
+        # 1. Transliterate any Indic script to ASCII Latin first.
+        name = self._transliterate_indic(name)
+
+        # 2. Normalize accents / noise on the (now Latin) text.
         if country == 'US' or country == 'India':
             name = self._strip_accents(name)
         elif country == 'France':
             name = self._normalize_french(name)
-        
-        if country == 'India':
-            name = self._transliterate_indic(name)
-        
+
         # Legal suffix normalization via cleanco
         name = basename(name)
-        
+
         return name.lower().strip()
-    
+
     def _normalize_address(self, addr: str, country: str) -> str:
         addr = self._safe_str(addr)
         addr = unicodedata.normalize('NFKC', addr)
-        
+
         if addr == "":
             return ""
-        
+
+        # 1. Transliterate any Indic script to ASCII Latin first.
+        addr = self._transliterate_indic(addr)
+
+        # 2. Normalize accents / noise on the (now Latin) text.
         if country == 'US' or country == 'India':
             addr = self._strip_accents(addr)
         elif country == 'France':
             addr = self._normalize_french(addr)
-        
-        if country == 'India':
-            addr = self._transliterate_indic(addr)
-        
+
         return addr.lower().strip()
     
     def _parse_address(self, addr: str, country: str) -> Dict[str, Any]:
@@ -305,6 +342,18 @@ class PreprocessingPipeline:
         
         return result
     
+    def _normalize_house_number(self, house_number: Any) -> str:
+        """Normalize house numbers: '6267B' -> '6267', '123-A' -> '123'.
+
+        Suffix letters usually denote sub-units of the same building, so the
+        numeric base is the reliable blocking signal.
+        """
+        hn = self._safe_str(house_number).strip()
+        if not hn:
+            return ''
+        match = re.match(r'^(\d+)', hn)
+        return match.group(1) if match else hn.lower()
+
     def _char_ngrams(self, text: str, n: int = 3) -> Set[str]:
         text = text.lower()
         if len(text) < n:
@@ -312,11 +361,20 @@ class PreprocessingPipeline:
         return {text[i:i+n] for i in range(len(text) - n + 1)}
     
     def _get_phonetic_keys(self, name: str) -> Dict[str, str]:
-        return {
+        keys = {
             'metaphone': jellyfish.metaphone(name) if name else '',
             'soundex': jellyfish.soundex(name) if name else '',
             'nysiis': jellyfish.nysiis(name) if name else '',
         }
+        # Sorted-token metaphone is robust to word-order permutations
+        # e.g. "Aimei Waters & Millar" vs "Waters & Millar Aimei".
+        if name:
+            tokens = sorted(name.split())
+            keys['metaphone_sorted'] = ' '.join(
+                jellyfish.metaphone(t) for t in tokens if t)
+        else:
+            keys['metaphone_sorted'] = ''
+        return keys
     
     def process_record(self, row: Dict[str, Any]) -> Dict[str, Any]:
         eid = self._safe_str(row['entity_id'])
@@ -331,6 +389,9 @@ class PreprocessingPipeline:
         admin = self._normalize_admin(addr_clean, country, parsed)
         phonetic = self._get_phonetic_keys(name_clean)
         name_ngrams = self._char_ngrams(name_clean, self.ngram_size)
+        # Address-level matching signals (mirrors name matching on addr_clean).
+        addr_phonetic = self._get_phonetic_keys(addr_clean)
+        addr_ngrams = self._char_ngrams(addr_clean, self.ngram_size)
         
         return {
             'entity_id': eid,
@@ -349,8 +410,15 @@ class PreprocessingPipeline:
             'po_box': self._safe_str(parsed['po_box']),
             'name_ngrams': list(name_ngrams),
             'metaphone': self._safe_str(phonetic['metaphone']),
+            'metaphone_sorted': self._safe_str(phonetic['metaphone_sorted']),
+            'house_number_norm': self._normalize_house_number(parsed['house_number']),
             'soundex': self._safe_str(phonetic['soundex']),
             'nysiis': self._safe_str(phonetic['nysiis']),
+            'addr_ngrams': list(addr_ngrams),
+            'addr_metaphone': self._safe_str(addr_phonetic['metaphone']),
+            'addr_metaphone_sorted': self._safe_str(addr_phonetic['metaphone_sorted']),
+            'addr_soundex': self._safe_str(addr_phonetic['soundex']),
+            'addr_nysiis': self._safe_str(addr_phonetic['nysiis']),
         }
     
     def process_file(self, input_path: Path, output_path: Path) -> pl.DataFrame:

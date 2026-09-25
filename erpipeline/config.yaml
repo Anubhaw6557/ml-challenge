@@ -1,13 +1,14 @@
 paths:
-  raw_dir: "/home/spyd3r/opencode/student_resource/dataset"
-  processed_dir: "data/processed"
-  candidates_dir: "data/candidates"
-  models_dir: "models"
-  output_dir: "output"
-
+  raw_dir: /home/spyd3r/opencode/student_resource/dataset
+  processed_dir: data/processed
+  candidates_dir: data/candidates
+  models_dir: models
+  output_dir: output
 preprocessing:
-  countries: ["US", "India", "France"]
-
+  countries:
+  - US
+  - India
+  - France
 blocking:
   name_ngram_size: 3
   name_min_overlap: 2
@@ -16,27 +17,30 @@ blocking:
   city_state_exact: true
   house_number_exact: true
   minhash_enabled: true
-  minhash_threshold: 0.7
+  minhash_threshold: 0.55
   minhash_perm: 128
   biencoder_enabled: true
   biencoder_top_k: 100
   max_candidates_per_s1: 200
   target_recall: 0.95
-
+  addr_ngram_size: 3
+  addr_min_overlap: 2
+  addr_metaphone_enabled: true
+  addr_minhash_enabled: true
+  addr_minhash_threshold: 0.7
+  addr_minhash_perm: 128
+  addr_metaphone_sorted_enabled: true
 matching:
-  # Bi-encoder
-  biencoder_model: "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+  biencoder_model: sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
   biencoder_batch_size: 512
   biencoder_top_k: 50
   biencoder_finetune_epochs: 3
-  # Cross-encoder
-  crossencoder_model: "xlm-roberta-base"
+  crossencoder_model: xlm-roberta-base
   crossencoder_max_length: 256
   crossencoder_batch_size: 64
-  # LightGBM
   lgbm_params:
-    objective: "binary"
-    metric: "binary_logloss"
+    objective: binary
+    metric: binary_logloss
     learning_rate: 0.05
     num_leaves: 63
     max_depth: 8
@@ -46,15 +50,14 @@ matching:
     n_estimators: 500
     early_stopping_rounds: 50
     verbose: -1
-  # Threshold calibration
   f05_beta: 0.5
   thresholds_per_country: true
-
 data:
   train_val_split: 0.85
-  stratify_by: ["country", "match_count"]
+  stratify_by:
+  - country
+  - match_count
   random_seed: 42
-
 validation:
   validate_output: true
-  test_dir: "/home/spyd3r/opencode/student_resource/dataset/test"
+  test_dir: /home/spyd3r/opencode/student_resource/dataset/test

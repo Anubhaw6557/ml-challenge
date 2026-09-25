@@ -5,7 +5,7 @@ Uses: datasketch (MinHash LSH), faiss (ANN), exact hash maps
 
 import pickle
 from collections import defaultdict
-from typing import Dict, Set, List, Optional, Any
+from typing import Dict, Set, List, Optional, Any, Tuple
 from dataclasses import dataclass
 
 import numpy as np
@@ -19,17 +19,36 @@ from ..config import get_config
 
 @dataclass
 class BlockingConfig:
+    # Name-based keys
     name_ngram_size: int = 3
     name_min_overlap: int = 2
     metaphone_enabled: bool = True
+    
+    # Address-based keys (NEW)
+    addr_ngram_size: int = 3
+    addr_min_overlap: int = 2
+    addr_metaphone_enabled: bool = True
+    addr_minhash_enabled: bool = True
+    addr_minhash_threshold: float = 0.55
+    addr_minhash_perm: int = 128
+    addr_metaphone_sorted_enabled: bool = True
+    
+    # Exact match keys
     postal_exact: bool = True
     city_state_exact: bool = True
     house_number_exact: bool = True
+    
+    # Name-based approximate
+    metaphone_enabled: bool = True
     minhash_enabled: bool = True
-    minhash_threshold: float = 0.7
+    minhash_threshold: float = 0.55
     minhash_perm: int = 128
+    
+    # Embedding-based
     biencoder_enabled: bool = True
     biencoder_top_k: int = 100
+    
+    # Candidate cap
     max_candidates_per_s1: int = 200
 
 
@@ -42,8 +61,17 @@ class BlockingIndex:
         self.city_state_index: Dict[str, Set[str]] = defaultdict(set)
         self.house_number_index: Dict[str, Set[str]] = defaultdict(set)
         self.metaphone_index: Dict[str, Set[str]] = defaultdict(set)
+        self.metaphone_sorted_index: Dict[str, Set[str]] = defaultdict(set)
         self.soundex_index: Dict[str, Set[str]] = defaultdict(set)
         self.nysiis_index: Dict[str, Set[str]] = defaultdict(set)
+        
+        # Address-based indexes (NEW)
+        self.addr_ngram_index: Dict[str, Set[str]] = defaultdict(set)
+        self.addr_metaphone_index: Dict[str, Set[str]] = defaultdict(set)
+        self.addr_soundex_index: Dict[str, Set[str]] = defaultdict(set)
+        self.addr_nysiis_index: Dict[str, Set[str]] = defaultdict(set)
+        self.addr_metaphone_sorted_index: Dict[str, Set[str]] = defaultdict(set)
+        self.addr_minhash_lsh: Optional[MinHashLSH] = None
         
         # Approximate indexes
         self.minhash_lsh: Optional[MinHashLSH] = None
@@ -51,6 +79,13 @@ class BlockingIndex:
             self.minhash_lsh = MinHashLSH(
                 threshold=self.config.minhash_threshold,
                 num_perm=self.config.minhash_perm
+            )
+        
+        # Address-based MinHash LSH (NEW)
+        if self.config.addr_minhash_enabled:
+            self.addr_minhash_lsh = MinHashLSH(
+                threshold=self.config.addr_minhash_threshold,
+                num_perm=self.config.addr_minhash_perm
             )
         
         self.faiss_index: Optional[faiss.Index] = None
@@ -85,7 +120,7 @@ class BlockingIndex:
                 self.city_state_index[key].add(eid)
         
         if self.config.house_number_exact:
-            hn = record.get('house_number')
+            hn = record.get('house_number_norm') or record.get('house_number')
             if hn:
                 self.house_number_index[f'HOUSE:{hn}'].add(eid)
         
@@ -93,6 +128,10 @@ class BlockingIndex:
             meta = record.get('metaphone')
             if meta:
                 self.metaphone_index[f'META:{meta}'].add(eid)
+
+            meta_sorted = record.get('metaphone_sorted')
+            if meta_sorted:
+                self.metaphone_sorted_index[f'META_SORTED:{meta_sorted}'].add(eid)
             
             soundex = record.get('soundex')
             if soundex:
@@ -102,12 +141,41 @@ class BlockingIndex:
             if nysiis:
                 self.nysiis_index[f'NYSIIS:{nysiis}'].add(eid)
         
-        # MinHash LSH
+        # MinHash LSH (name-based)
         if self.config.minhash_enabled:
             ngrams = record.get('name_ngrams', [])
             if ngrams:
                 mh = self._minhash_from_ngrams(ngrams)
                 self.minhash_lsh.insert(eid, mh)
+        
+        # Address-based indexes (NEW)
+        if self.config.addr_metaphone_enabled:
+            meta = record.get('addr_metaphone')
+            if meta:
+                self.addr_metaphone_index[f'ADDR_META:{meta}'].add(eid)
+            
+            meta_sorted = record.get('addr_metaphone_sorted')
+            if meta_sorted:
+                self.addr_metaphone_sorted_index[f'ADDR_META_SORTED:{meta_sorted}'].add(eid)
+            
+            soundex = record.get('addr_soundex')
+            if soundex:
+                self.addr_soundex_index[f'ADDR_SOUNDEX:{soundex}'].add(eid)
+            
+            nysiis = record.get('addr_nysiis')
+            if nysiis:
+                self.addr_nysiis_index[f'ADDR_NYSIIS:{nysiis}'].add(eid)
+            
+            meta_sorted = record.get('addr_metaphone_sorted')
+            if meta_sorted:
+                self.addr_metaphone_sorted_index[f'ADDR_META_SORTED:{meta_sorted}'].add(eid)
+        
+        # Address MinHash LSH
+        if self.config.addr_minhash_enabled:
+            addr_ngrams = record.get('addr_ngrams', [])
+            if addr_ngrams:
+                mh = self._minhash_from_ngrams(addr_ngrams)
+                self.addr_minhash_lsh.insert(eid, mh)
     
     def build_faiss_index(self, embeddings: np.ndarray, entity_ids: List[str]):
         """Build FAISS index from bi-encoder embeddings"""
@@ -143,7 +211,10 @@ class BlockingIndex:
         print(f"  Metaphone index: {len(self.metaphone_index)} keys")
         
         if self.config.minhash_enabled and self.minhash_lsh:
-            print(f"  MinHash LSH: built")
+            print(f"  MinHash LSH (name): built")
+        if self.config.addr_minhash_enabled and self.addr_minhash_lsh:
+            print(f"  MinHash LSH (address): built")
+        print(f"  Address metaphone index: {len(self.addr_metaphone_index)} keys")
     
     def query_exact(self, record: Dict[str, Any]) -> Set[str]:
         """Query exact match indexes"""
@@ -161,7 +232,7 @@ class BlockingIndex:
                 candidates.update(self.city_state_index.get(f'CITY_STATE:{city}:{state}', set()))
         
         if self.config.house_number_exact:
-            hn = record.get('house_number')
+            hn = record.get('house_number_norm') or record.get('house_number')
             if hn:
                 candidates.update(self.house_number_index.get(f'HOUSE:{hn}', set()))
         
@@ -169,6 +240,11 @@ class BlockingIndex:
             meta = record.get('metaphone')
             if meta:
                 candidates.update(self.metaphone_index.get(f'META:{meta}', set()))
+
+            meta_sorted = record.get('metaphone_sorted')
+            if meta_sorted:
+                candidates.update(self.metaphone_sorted_index.get(
+                    f'META_SORTED:{meta_sorted}', set()))
             
             soundex = record.get('soundex')
             if soundex:
@@ -177,7 +253,26 @@ class BlockingIndex:
             nysiis = record.get('nysiis')
             if nysiis:
                 candidates.update(self.nysiis_index.get(f'NYSIIS:{nysiis}', set()))
-        
+
+        # Address exact matches (mirrors name matching on addr_clean)
+        if self.config.addr_metaphone_enabled:
+            addr_meta = record.get('addr_metaphone')
+            if addr_meta:
+                candidates.update(self.addr_metaphone_index.get(f'ADDR_META:{addr_meta}', set()))
+
+            addr_meta_sorted = record.get('addr_metaphone_sorted')
+            if addr_meta_sorted:
+                candidates.update(self.addr_metaphone_sorted_index.get(
+                    f'ADDR_META_SORTED:{addr_meta_sorted}', set()))
+
+            addr_soundex = record.get('addr_soundex')
+            if addr_soundex:
+                candidates.update(self.addr_soundex_index.get(f'ADDR_SOUNDEX:{addr_soundex}', set()))
+
+            addr_nysiis = record.get('addr_nysiis')
+            if addr_nysiis:
+                candidates.update(self.addr_nysiis_index.get(f'ADDR_NYSIIS:{addr_nysiis}', set()))
+
         return candidates
     
     def query_minhash(self, record: Dict[str, Any]) -> Set[str]:
@@ -191,7 +286,19 @@ class BlockingIndex:
         
         mh = self._minhash_from_ngrams(ngrams)
         return set(self.minhash_lsh.query(mh))
-    
+
+    def query_addr_minhash(self, record: Dict[str, Any]) -> Set[str]:
+        """Query address MinHash LSH for approximate address similarity"""
+        if not self.config.addr_minhash_enabled or not self.addr_minhash_lsh:
+            return set()
+
+        ngrams = record.get('addr_ngrams', [])
+        if not ngrams:
+            return set()
+
+        mh = self._minhash_from_ngrams(ngrams)
+        return set(self.addr_minhash_lsh.query(mh))
+
     def query_faiss(self, query_embedding: np.ndarray, k: int = None) -> List[str]:
         """Query FAISS index for embedding similarity"""
         if not self.config.biencoder_enabled or not self.faiss_index:
@@ -207,44 +314,80 @@ class BlockingIndex:
     
     def get_candidates(self, record: Dict[str, Any], 
                        query_embedding: np.ndarray = None) -> Set[str]:
-        """Get all candidates for a query record"""
+        """Get all candidates for a query record.
+
+        Country is a 100%-purity blocking key (zero cross-country matches in
+        ground truth), so candidates are restricted to the query's country.
+        """
         candidates = set()
-        
+
         # Exact matches
         candidates.update(self.query_exact(record))
-        
-        # MinHash LSH
+
+        # MinHash LSH (name)
         candidates.update(self.query_minhash(record))
-        
+
+        # MinHash LSH (address)
+        candidates.update(self.query_addr_minhash(record))
+
         # FAISS (bi-encoder)
         if query_embedding is not None:
             candidates.update(self.query_faiss(query_embedding))
-        
+
+        # Country partition: drop any cross-country candidates.
+        query_country = record.get('country')
+        if query_country:
+            candidates = {eid for eid in candidates
+                          if self.entity_data.get(eid, {}).get('country') in (None, '', query_country)}
+
         return candidates
     
-    def get_candidates_for_s1(self, s1_df: pl.DataFrame, 
+    def get_candidates_split(self, record: Dict[str, Any],
+                               query_embedding: np.ndarray = None
+                               ) -> Tuple[Set[str], Set[str]]:
+        """Get candidates split into (exact, fuzzy) sets.
+
+        Exact = PIN / city-state / house-number / phonetic indexes.
+        Fuzzy = name and address MinHash LSH (+ FAISS).
+        """
+        exact = self.query_exact(record)
+        fuzzy = self.query_minhash(record)
+        fuzzy.update(self.query_addr_minhash(record))
+        if query_embedding is not None:
+            fuzzy.update(self.query_faiss(query_embedding))
+        fuzzy -= exact
+        return exact, fuzzy
+
+    def get_candidates_for_s1(self, s1_df: pl.DataFrame,
                               s1_embeddings: np.ndarray = None) -> pl.DataFrame:
-        """Generate candidates for all S1 entities"""
+        """Generate candidates for all S1 entities.
+
+        Prioritized cap: keep every exact/phonetic match, sample only the
+        fuzzy overflow. A random cap over the union can drop true matches
+        when a loose fuzzy key floods the pool.
+        """
+        import random
         results = []
-        
+
         for i, row in enumerate(s1_df.iter_rows(named=True)):
             s1_id = row['entity_id']
-            
+
             emb = s1_embeddings[i] if s1_embeddings is not None else None
-            candidates = self.get_candidates(row, emb)
-            
-            # Cap candidates
-            if len(candidates) > self.config.max_candidates_per_s1:
-                import random
-                candidates = set(random.sample(list(candidates), 
-                                               self.config.max_candidates_per_s1))
-            
+            exact, fuzzy = self.get_candidates_split(row, emb)
+            candidates = set(exact)
+            room = self.config.max_candidates_per_s1 - len(candidates)
+            if room > 0 and fuzzy:
+                if len(fuzzy) > room:
+                    candidates.update(random.sample(sorted(fuzzy), room))
+                else:
+                    candidates.update(fuzzy)
+
             results.append({
                 'source1_entity_id': s1_id,
-                'candidate_entity_ids': list(candidates),
+                'candidate_entity_ids': sorted(candidates),
                 'num_candidates': len(candidates)
             })
-        
+
         return pl.DataFrame(results)
     
     def save(self, path: str):
@@ -254,8 +397,13 @@ class BlockingIndex:
             'city_state_index': dict(self.city_state_index),
             'house_number_index': dict(self.house_number_index),
             'metaphone_index': dict(self.metaphone_index),
+            'metaphone_sorted_index': dict(self.metaphone_sorted_index),
             'soundex_index': dict(self.soundex_index),
             'nysiis_index': dict(self.nysiis_index),
+            'addr_metaphone_index': dict(self.addr_metaphone_index),
+            'addr_metaphone_sorted_index': dict(self.addr_metaphone_sorted_index),
+            'addr_soundex_index': dict(self.addr_soundex_index),
+            'addr_nysiis_index': dict(self.addr_nysiis_index),
             'entity_data': self.entity_data,
             'config': self.config.__dict__,
         }
@@ -281,8 +429,15 @@ class BlockingIndex:
         obj.city_state_index = defaultdict(set, data['city_state_index'])
         obj.house_number_index = defaultdict(set, data['house_number_index'])
         obj.metaphone_index = defaultdict(set, data['metaphone_index'])
+        obj.metaphone_sorted_index = defaultdict(
+            set, data.get('metaphone_sorted_index', {}))
         obj.soundex_index = defaultdict(set, data['soundex_index'])
         obj.nysiis_index = defaultdict(set, data['nysiis_index'])
+        obj.addr_metaphone_index = defaultdict(set, data.get('addr_metaphone_index', {}))
+        obj.addr_metaphone_sorted_index = defaultdict(
+            set, data.get('addr_metaphone_sorted_index', {}))
+        obj.addr_soundex_index = defaultdict(set, data.get('addr_soundex_index', {}))
+        obj.addr_nysiis_index = defaultdict(set, data.get('addr_nysiis_index', {}))
         obj.entity_data = data['entity_data']
         
         # Load FAISS
